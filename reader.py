@@ -6,6 +6,8 @@ import random
 from PIL import Image
 import numpy as np
 
+from image_process import process_image
+
 def load_embedding(filename, vocab_size, embedding_size):
     embedding = np.zeros([vocab_size, embedding_size])
     with open(filename) as ifs:
@@ -48,12 +50,6 @@ class DataReader(object):
                 random.shuffle(data)
         return data
 
-    def _get_image_ids(self, filename, resize=224):
-        image = Image.open(filename)
-        width, height = image.size
-        image = image.resize((resize, resize), Image.ANTIALIAS)
-        return np.array(image) / 255.
-
     def _padding_batch(self, batch):
         # neg sample
         for idx, line in enumerate(batch[1]):
@@ -71,13 +67,19 @@ class DataReader(object):
                 continue
             curr_size += 1
             query, imageid = line
+            query_list = query.split("\1\2")
+            random.shuffle(query_list)
+            query = query_list[0]
             query_ids = [self._word_to_id.get(x, self._word_to_id["<unk>"]) for x in query.split()]
             if len(query_ids) > self._max_seq_len:
                 query_ids = query_ids[:self._max_seq_len]
             else:
                 query_ids = query_ids + [self._word_to_id["<pad>"]] * (self._max_seq_len - len(query_ids))
 
-            img_array = self._get_image_ids(self._image_path + "/%s.jpg" % imageid)
+            img_array = process_image(self._image_path + "/%s.jpg" % imageid,
+                    mode="train", 
+                    color_jitter=False, 
+                    rotate=False)
             if img_array.shape != (224, 224, 3):
                 continue
             batch[0].append(query_ids)
@@ -96,11 +98,14 @@ class DataReader(object):
         for line in self._data:
             if len(line) != 1:
                 continue
-            curr_size += 1
             imageid = line[0]
-            img_array = self._get_image_ids(self._image_path + "/%s.jpg" % imageid)
+            img_array = process_image(self._image_path + "/%s.jpg" % imageid,
+                    mode="train", 
+                    color_jitter=False, 
+                    rotate=False)
             if img_array.shape != (224, 224, 3):
                 continue
+            curr_size += 1
             batch.append(img_array)
             if curr_size >= self._batch_size:
                 yield batch
@@ -132,3 +137,4 @@ if __name__ == "__main__":
     for batch in reader.batch_generator():
         for idx, line in enumerate(batch[0]):
             print(batch[0][idx], batch[1][idx], batch[2][idx])
+           
